@@ -1,0 +1,288 @@
+.include "m328pdef.inc"
+	
+	.def	oVal	= r16		; outer loop value low
+	.def	oValC	= r17		; outer loop value high
+	.def	vty	= r20		; velocity level state
+	.def	lvl	= r21		; changer level state
+	.def	maskN 	= r22		; mask multipurpose
+	.def	num	= r23		; counter
+	.def	iLoopRL = r24		; inner loop register low
+	.def	iLoopRH = r25		; inner loop register high 
+	.def	oLoopRL = r26		; outer loop register low
+	.def	oLoopRH = r27		; outer loop register high
+	.def	res	= r28		; result of level state + toggle led
+	.def	toggle 	= r29		; xor register
+	.def	led 	= r30		; led register
+	
+	.equ	iVal 	= 28168		; inner loop value
+
+	.cseg
+	.org	0x00
+	ldi	maskN, 0x3F		; 00111111
+	out     DDRC, maskN		; C0 - C5 as output			
+        out     DDRB, maskN		; B0 - B5 as output
+	ldi	maskN, 0x04		; 00000100
+	out     DDRD, maskN		; D2 as output
+	
+	clr	led			; init toggle led state
+	ldi	toggle, 0x20		; B5 -> xor (00100000)
+	ldi	num, 0x09		; init counter
+	ldi	vty, 0x04		; init velocity state
+	ldi	oVal, 142		; int at 1s
+
+start:	in	lvl, PIND		; reads PortD
+	ldi	maskN, 0x30		; 00110000
+	and	lvl, maskN		; apply mask
+	ldi	maskN, 0x10		; reads state
+	cp	lvl, maskN
+	brne	check			
+	call	down			; increase velocity
+	
+oLoop:	ldi	iLoopRL, LOW(iVal)	; initialize inner loop count in inner part
+	ldi	iLoopRH, HIGH(iVal)	; loop high and low registers
+
+iLoop:	sbiw	iLoopRL, 1		; decrement inner loop registers
+	brne	iLoop			; branch to iLoop if iLoop registers != 0
+
+	;dec	oLoopRL			; decrement outer loop register
+	sbiw	oLoopRL, 1		; decrement outer loop registers
+	brne	oLoop			; branch to oLoop if outer loop register != 0
+	
+	ldi	maskN, 0x00		; reset counter
+	cp	num, maskN
+	brne	restart
+	ldi	num, 0x09
+	rjmp	start			; jump back to start
+	
+restart:dec	num
+	rjmp	start			; jump back to start
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	
+down:	ldi	maskN, 0x01		; at 0.1s
+	and	maskN, vty
+	cp	vty, maskN
+	brne	at71D
+	rjmp	ahead
+
+at71D:	ldi	maskN, 0x02		; at 0.5s
+	and	maskN, vty
+	cp	vty, maskN
+	brne	at142D
+	ldi	vty, 0x01
+	ldi	oVal, 14
+	clr	oValC
+	
+	rjmp	ahead
+	
+at142D:	ldi	maskN, 0x04		; at 1s
+	and	maskN, vty
+	cp	vty, maskN
+	brne	at710D
+	ldi	vty, 0x02
+	ldi	oVal, 71
+	clr	oValC
+	
+	rjmp	ahead
+	
+at710D:	ldi	maskN, 0x08		; at 5s
+	and	maskN, vty
+	cp	vty, maskN
+	brne	at1420D
+	ldi	vty, 0x04
+	ldi	oVal, 142
+	clr	oValC
+	
+	rjmp	ahead
+	
+at1420D:ldi	maskN, 0x10		; at 10s
+	and	maskN, vty
+	ldi	vty, 0x08
+	ldi	oVal, LOW(710)
+	ldi	oValC, HIGH(710)
+	
+	rjmp	ahead
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	
+check:	ldi	maskN, 0x00		; reads state
+	and	maskN, lvl
+	cp	lvl, maskN
+	brne	up			; reduce velocity
+	rjmp	ahead
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	
+up:	ldi	maskN, 0x01		; at 0.1s
+	and	maskN, vty
+	cp	vty, maskN
+	brne	at71U
+	ldi	vty, 0x02
+	ldi	oVal, 71
+	clr	oValC
+	
+	rjmp	ahead
+	
+at71U:	ldi	maskN, 0x02		; at 0.5s
+	and	maskN, vty
+	cp	vty, maskN
+	brne	at142U
+	ldi	vty, 0x04
+	ldi	oVal, 142
+	clr	oValC
+	
+	rjmp	ahead
+	
+at142U:	ldi	maskN, 0x04		; at 1s
+	and	maskN, vty
+	cp	vty, maskN
+	brne	at710U
+	ldi	vty, 0x08
+	ldi	oVal, LOW(710)
+	ldi	oValC, HIGH(710)
+	
+	rjmp	ahead
+	
+at710U:	ldi	maskN, 0x08		; at 5s
+	and	maskN, vty
+	cp	vty, maskN
+	brne	at1420U
+	ldi	vty, 0x10
+	ldi	oVal, LOW(1420)
+	ldi	oValC, HIGH(1420)
+	
+	rjmp	ahead
+	
+at1420U:rjmp	ahead			; at 10s
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	
+ahead:	;//ldi	maskN, 0x00
+	;//out	PORTB, maskN		; clear port
+	;eor	led, vty		; toggle state level led
+	;out	PORTB, led		; show state level and velocity	
+	
+	eor	led, toggle		; toggle led
+	mov	res, vty
+	add	res, led
+	out	PORTB, res		; show state level and velocity	
+	;out	PORTB, vty		; show state
+	
+	mov	oLoopRL, oVal		; initialize outer loop count in inner part
+	mov	oLoopRH, oValC		; loop high and low registers
+	
+	call	nueve
+	
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	
+reset:	rjmp	oLoop
+	
+cero:	ldi	maskN, 0x00
+	cp	num, maskN
+	brne	reset
+	ldi	maskN, 0x40		; draw 0
+	out	PORTC, maskN
+	;
+	swap	maskN
+	out	PORTD, maskN
+	;
+	rjmp	oLoop
+
+uno:	ldi	maskN, 0x01
+	cp	num, maskN
+	brne	cero
+	ldi	maskN, 0xF9		; draw 1
+	out	PORTC, maskN
+	;
+	swap	maskN
+	out	PORTD, maskN
+	;
+	rjmp	oLoop
+
+dos:	ldi	maskN, 0x02
+	cp	num, maskN
+	brne	uno
+	ldi	maskN, 0xA4		; draw 2
+	out	PORTC, maskN
+	;
+	swap	maskN
+	out	PORTD, maskN
+	;
+	rjmp	oLoop
+
+tres:	ldi	maskN, 0x03
+	cp	num, maskN
+	brne	dos
+	ldi	maskN, 0xB0		; draw 3
+	out	PORTC, maskN
+	;
+	swap	maskN
+	out	PORTD, maskN
+	;
+	rjmp	oLoop
+
+cuatro:	ldi	maskN, 0x04
+	cp	num, maskN
+	brne	tres
+	ldi	maskN, 0x99		; draw 4
+	out	PORTC, maskN
+	;
+	swap	maskN
+	out	PORTD, maskN
+	;
+	rjmp	oLoop
+
+cinco:	ldi	maskN, 0x05
+	cp	num, maskN
+	brne	cuatro
+	ldi	maskN, 0x92		; draw 5
+	out	PORTC, maskN
+	;
+	swap	maskN
+	out	PORTD, maskN
+	;
+	rjmp	oLoop
+
+seis:	ldi	maskN, 0x06
+	cp	num, maskN
+	brne	cinco
+	ldi	maskN, 0x82		; draw 6
+	out	PORTC, maskN
+	;
+	swap	maskN
+	out	PORTD, maskN
+	;
+	rjmp	oLoop
+
+siete:	ldi	maskN, 0x07
+	cp	num, maskN
+	brne	seis
+	ldi	maskN, 0xF8		; draw 7
+	out	PORTC, maskN
+	;
+	swap	maskN
+	out	PORTD, maskN
+	;
+	rjmp	oLoop
+
+ocho:	ldi	maskN, 0x08
+	cp	num, maskN
+	brne	siete
+	ldi	maskN, 0x00		; draw 8
+	out	PORTC, maskN
+	;
+	swap	maskN
+	out	PORTD, maskN
+	;
+	rjmp	oLoop
+
+nueve:	ldi	maskN, 0x09
+	cp	num, maskN
+	brne	ocho
+	ldi	maskN, 0x90		; draw 9
+	out	PORTC, maskN
+	;
+	swap	maskN
+	out	PORTD, maskN
+	;
+	rjmp	oLoop
