@@ -1,0 +1,276 @@
+.include "m328pdef.inc"
+	
+	.def	mask 	= r16		; multipurpose mask
+	.def	btns	= r17		; pauseer (2) - setter (1)
+	.def	btn_3	= r18		; starter (3)
+	.def	running	= r19		; stores if paused or not
+	.def	D1	= r20		; seconds left (display 1)
+	.def	D2	= r21		; seconds right (display 2)
+	.def	D3	= r22		; minutes (display 3)
+	.def	oLoopR  = r23		; outer loop register
+	.def	iLoopRL = r24		; inner loop register low
+	.def	iLoopRH = r25		; inner loop register high 
+	
+	.equ	oVal	= 142		; outer loop value
+	.equ	iVal 	= 28168		; inner loop value
+
+	.cseg
+	.org	0x00
+	ldi	mask, 0xF0		; 11110000
+	out     DDRD, mask		; D7 - D4 as output, D2 - D3 as input
+	ldi	mask, 0x0F		; 00001111
+	out     DDRC, mask		; C0 - C3 as output
+	out     DDRB, mask		; B0 - B3 as output, B4 as input
+	
+	ldi	D1, 0x00		; 0
+	ldi	D2, 0x00		; 0
+	ldi	D3, 0x03		; 3
+	ldi	running, 0x00		; set paused
+
+start:	in	btns, PIND		; reads PortD
+	ldi	mask, 0x0C		; 00001100
+	and	btns, mask		; apply mask
+	
+	in	btn_3, PINB		; reads PortB
+	ldi	mask, 0x10		; 00010000
+	and	btn_3, mask		; apply mask
+	
+	add	btns, btn_3
+	
+	ldi	mask, 0x00		
+	cp	btns, mask
+	brne	setter			; check button 1
+	ldi	oLoopR, oVal		; initialize outer loop count
+	call	zeroD1
+	;call	ahead			; check if can count, runs
+	
+oLoop:	ldi	iLoopRL, LOW(iVal)	; initialize inner loop count in inner part
+	ldi	iLoopRH, HIGH(iVal)	; loop high and low registers
+
+iLoop:	sbiw	iLoopRL, 1		; decrement inner loop registers
+	brne	iLoop			; branch to iLoop if iLoop registers != 0
+
+	dec	oLoopR			; decrement outer loop register
+	brne	oLoop			; branch to oLoop if outer loop register != 0
+	
+	;-------------clock-------------;
+	
+	ldi	mask, 0x00		; handles display 1
+	cp	D1, mask
+	brne	clock1
+	ldi	D1, 0x09
+	
+	ldi	mask, 0x00		; handles display 2
+	cp	D2, mask
+	brne	clock2
+	ldi	D2, 0x05
+	
+	ldi	mask, 0x05		; handles display 3
+	cp	D2, mask
+	brne	empty
+	ldi	mask, 0x00
+	cp	D3, mask
+	brne	clock3
+	ldi	D3, 0x03
+	ldi	D2, 0x00
+	ldi	D1, 0x00
+	
+	rjmp	start			; jump back to start
+	
+clock1:	dec	D1
+	rjmp	start			
+	
+clock2:	dec	D2
+	rjmp	start			
+	
+clock3:	dec	D3
+	rjmp	start	
+	
+runs:	ldi	mask, 0x00
+	cp	running, mask		; is paused?
+	brne	oLoop			; is not paused -> count, ahead	
+	rjmp	start			; is paused -> don't count
+
+;ahead:	ldi	oLoopR, oVal		; initialize outer loop count
+	;call	zeroD1
+	
+empty:	rjmp	start
+	
+setter: ldi	mask, 0x04
+	and	mask, btns
+	cp	btns, mask
+	brne	pauser			; check button 2
+	
+	;---------is button 1-----------;
+	;_____delay_____;
+	sbiw	iLoopRL, 1		; decrement inner loop registers
+	brne	iLoop			; branch to iLoop if iLoop registers != 0
+
+	dec	oLoopR			; decrement outer loop register
+	brne	oLoop			; branch to oLoop if outer loop register != 0
+	;___________;
+	ldi	mask, 0x00		; handles display 1
+	cp	D1, mask
+	brne	clock1
+	ldi	D1, 0x09
+	
+	ldi	mask, 0x00		; handles display 2
+	cp	D2, mask
+	brne	clock2
+	ldi	D2, 0x05
+	
+	ldi	mask, 0x05		; handles display 3
+	cp	D2, mask
+	brne	empty
+	ldi	mask, 0x00
+	cp	D3, mask
+	brne	clock3
+	ldi	D3, 0x03
+	ldi	D2, 0x00
+	ldi	D1, 0x00
+	
+	rjmp	start
+	
+pauser: ldi	mask, 0x08
+	and	mask, btns
+	cp	btns, mask
+	brne	player			; check button 3
+	ldi	running, 0x00		; is button 2
+	rjmp	start
+	
+player:	ldi	mask, 0x10
+	and	mask, btns
+	cp	btns, mask
+	brne	empty			
+	ldi	running, 0x01		; is button 3
+	rjmp	start
+;----------------------------------------
+reset1:	rjmp	zeroD2
+
+oneD1:	ldi	mask, 0x01		; draw 1
+	cp	D1, mask
+	brne	reset1
+	out	PORTC, mask
+	call	zeroD2
+
+twoD1:	ldi	mask, 0x02		; draw 2
+	cp	D1, mask
+	brne	oneD1
+	out	PORTC, mask
+	call	zeroD2
+
+threeD1:ldi	mask, 0x03		; draw 3
+	cp	D1, mask
+	brne	twoD1
+	out	PORTC, mask
+	call	zeroD2
+
+fourD1:	ldi	mask, 0x04		; draw 4
+	cp	D1, mask
+	brne	threeD1
+	out	PORTC, mask
+	call	zeroD2
+
+fiveD1:	ldi	mask, 0x05		; draw 5
+	cp	D1, mask
+	brne	fourD1
+	out	PORTC, mask
+	call	zeroD2
+
+sixD1:	ldi	mask, 0x06		; draw 6
+	cp	D1, mask
+	brne	fiveD1
+	out	PORTC, mask
+	call	zeroD2
+
+sevenD1:ldi	mask, 0x07		; draw 7
+	cp	D1, mask
+	brne	sixD1
+	out	PORTC, mask
+	call	zeroD2
+
+eightD1:ldi	mask, 0x08		; draw 8
+	cp	D1, mask
+	brne	sevenD1
+	out	PORTC, mask
+	call	zeroD2
+
+nineD1:	ldi	mask, 0x09		; draw 9
+	cp	D1, mask
+	brne	eightD1
+	out	PORTC, mask
+	call	zeroD2
+	
+zeroD1:	ldi	mask, 0x00		; draw 0
+	cp	D1, mask
+	brne	nineD1
+	out	PORTC, mask
+	call	zeroD2
+;----------------------------------------
+reset2:	rjmp	threeD3
+    
+oneD2:	ldi	mask, 0x01		; draw 1
+	cp	D2, mask
+	brne	reset2
+	out	PORTB, mask
+	call	threeD3
+
+twoD2:	ldi	mask, 0x02		; draw 2
+	cp	D2, mask
+	brne	oneD2
+	out	PORTB, mask
+	call	threeD3
+
+threeD2:ldi	mask, 0x03		; draw 3
+	cp	D2, mask
+	brne	twoD2
+	out	PORTB, mask
+	call	threeD3
+
+fourD2:	ldi	mask, 0x04		; draw 4
+	cp	D2, mask
+	brne	threeD2
+	out	PORTB, mask
+	call	threeD3
+
+fiveD2:	ldi	mask, 0x05		; draw 5
+	cp	D2, mask
+	brne	fourD2
+	out	PORTB, mask
+	call	threeD3
+	
+zeroD2:	ldi	mask, 0x00		; draw 0
+	cp	D2, mask
+	brne	fiveD2
+	out	PORTB, mask
+	call	threeD3
+;----------------------------------------
+reset3:	rjmp	runs
+    
+zeroD3:	ldi	mask, 0x00		; draw 0
+	cp	D3, mask
+	brne	reset3
+	swap	mask
+	out	PORTD, mask
+	rjmp	runs
+    
+oneD3:	ldi	mask, 0x01		; draw 1
+	cp	D3, mask
+	brne	zeroD3
+	swap	mask
+	out	PORTD, mask
+	rjmp	runs
+
+twoD3:	ldi	mask, 0x02		; draw 2
+	cp	D3, mask
+	brne	oneD3
+	swap	mask
+	out	PORTD, mask
+	rjmp	runs
+
+threeD3:ldi	mask, 0x03		; draw 3
+	cp	D3, mask
+	brne	twoD3
+	swap	mask
+	out	PORTD, mask
+	rjmp	runs
