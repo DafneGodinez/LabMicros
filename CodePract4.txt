@@ -1,0 +1,163 @@
+/* 
+ * File:   main.c
+ * Author: Moisés Mls
+ *
+ * Created on 25 de abril de 2022, 11:02 AM
+ */
+
+#define F_CPU 16000000
+
+//#include <stdio.h>
+//#include <stdlib.h>
+#include <avr/io.h>                                                             
+#include <util/delay.h>
+#include <avr/interrupt.h>
+
+int time_count;
+int flag = 0;
+int note = 0;
+int i = 0;
+
+/*
+    redonda = 400ms
+    blanca  = 200ms
+    negra   = 100ms
+    corchea =  50ms
+*/
+
+                /* E E E C E G ^G - //C G ^E A B bB A ^G E G A F G E C D B// */
+int mario[]   = {15, 15, 15, 19, 15, 13, 26, 19, 26, 30, 11, 10, 11, 11, 26, 15,
+                 13, 11, 14, 13, 15, 19, 17, 20, 19, 26, 30, 11, 10, 11, 11, 26, 
+                 15, 13, 11, 14, 13, 15, 19, 17, 20, 15, 15, 15, 19, 15, 13, 26, 
+                 19, 26, 30, 11, 10, 11, 11, 26, 15, 13, 11, 14, 13, 15, 19, 17, 
+                 20, 19, 26, 30, 11, 10, 11, 11, 26, 15, 13, 11, 14, 13, 15, 19, 
+                 17, 20, 0};                
+int time_m[]  = {100, 100, 100, 50, 50, 50, 50, 100, 50, 100, 100, 100, 50, 
+                 100, 100, 100, 100, 50, 100, 100, 50, 50, 100, 100, 100, 50, 
+                 100, 100, 100, 50, 100, 100, 100, 100, 100, 100, 100, 50, 50, 
+                 100, 100, 100, 100, 100, 50, 50, 50, 50, 100, 50, 100, 100, 100, 
+                 50, 100, 100, 100, 100, 50, 100, 100, 50, 50, 100, 100, 100, 50,
+                 100, 100, 100, 50, 100, 100, 100, 100, 100, 100, 100, 50, 50,
+                 100, 100, 0};
+                /* F A F E F A E D D F D C - D A G D A G F D */
+int up[]      = {14, 11, 14, 15, 14, 11, 15, 17, 17, 14, 17, 19, 17, 11, 13, 17, 
+                 11, 13, 14, 17, 14, 11, 14, 15, 14, 11, 15, 17, 17, 14, 17, 19, 
+                 17, 11, 13, 17, 11, 13, 14, 17, 14, 11, 14, 15, 14, 11, 15, 17, 
+                 17, 14, 17, 19, 17, 11, 13, 17, 11, 13, 14, 17, 0};                                        
+int time_u[]  = {50, 100, 100, 400, 50, 100, 100, 100, 50, 100, 100, 200, 50, 
+                 100, 100, 50, 100, 300, 100, 200, 50, 100, 100, 400, 50, 100, 
+                 100, 100, 50, 100, 100, 200, 50, 100, 100, 50, 100, 300, 100, 
+                 200, 50, 100, 100, 400, 50, 100, 100, 100, 50, 100, 100, 200, 
+                 50, 100, 100, 50, 100, 300, 100, 200, 0};
+                /* ^B E G F# E B A F# E G F# D# F B */
+int potter[]  = {20, 15, 13, 14, 15, 10, 11, 14, 15, 13, 14, 16, 14, 20, 20, 15, 
+                 13, 14, 15, 10, 11, 14, 15, 13, 14, 16, 14, 20, 20, 15, 13, 14, 
+                 15, 10, 11, 14, 15, 13, 14, 16, 14, 20, 20, 15, 13, 14, 15, 10, 
+                 11, 14, 15, 13, 14, 16, 14, 20, 0};                                    
+int time_p[]  = {50, 150, 100, 100, 100, 50, 150, 150, 150, 100, 100, 100, 50, 
+                 250, 50, 150, 100, 100, 100, 50, 150, 150, 150, 100, 100, 100, 
+                 50, 250, 50, 150, 100, 100, 100, 50, 150, 150, 150, 100, 100, 
+                 100, 50, 250, 50, 150, 100, 100, 100, 50, 150, 150, 150, 100, 
+                 100, 100, 50, 250, 0};
+
+ISR (TIMER0_OVF_vect) {
+    TCNT0 = 96;                                                                 // Set for 10 us timeout
+    TIFR0 = 1<<TOV0;
+    if (note != 0) {
+        ++time_count;      
+        if (time_count == note && flag == 0) {
+            PORTB = 0x20;                                                       // Complement port bit to blink signal (1)
+            time_count = 0;       
+            flag = 1;
+        }
+        if (time_count == note && flag == 1) {
+            PORTB = 0x00;                                                       // Complement port bit to blink signal (0)
+            time_count = 0;         
+            flag = 0;
+        }
+    } else {                                                                    // Stop song
+        PORTB = 0x00;                                                           
+        time_count = 0;         
+        flag = 0;
+    }
+}
+
+void duration(unsigned char milliseconds) {
+    while(milliseconds > 0) {
+        milliseconds--;
+        _delay_ms(1);
+    }
+}
+
+void rests_m(int i) {
+    int lapse = 100;
+    if (i == 1 || i == 2 || i == 7 || i == 9 || i == 10 || i == 11 || i == 19 ||// Eighth rest 100ms
+            i == 20 || i == 24 || i == 26 || i == 27 || i == 28 || i == 36 || 
+            i == 37)
+        lapse =+ 100;
+    else if (i == 5 || i == 6 || i == 8 || i == 23 || i == 25 || i == 40)       // Quarter rest 200ms
+        lapse =+ 200;
+    else if (i == 4 || i == 5 || i == 6 || i == 17)                             // Quarter Staccato 50ms
+        lapse =+ 50;
+    PORTB = 0x00;                                                               // Default rest 100ms
+    time_count = 0;         
+    flag = 0;
+    duration(lapse);
+}
+
+void rests_u(int i) {
+    int lapse = 200;
+    if (i == 3 || i == 7 || i == 11 || i == 14)                                 // Eighth rest 200ms
+        lapse =+ 100;
+    PORTB = 0x00;                                                               // Default rest 200ms
+    time_count = 0;         
+    flag = 0;
+    duration(lapse);
+}
+
+void rests_p(int i) {
+    int lapse = 200;
+    PORTB = 0x00;                                                               // Default rest 200ms
+    time_count = 0;         
+    flag = 0;
+    duration(lapse);
+}
+
+int main(void) {
+    DDRC = 0x00;                                                                // Input (C0 - C2)
+    DDRB = 0xFF;                                                                // Output (B5)
+    TCCR0B = 0x01;
+    TCNT0 = 0x00;
+    TIFR0 = 1<<TOV0;
+    TIMSK0 = 1<<TOIE0;
+    sei();
+    while(1){
+        if(((PINC>>PC0)&1) && (((PINC>>PC1)&1)==0) && (((PINC>>PC2)&1)==0)) {   // Mario Bros's Theme
+            i = 0;                                                              // Restart pointer
+            while((((PINC>>PC0)&1) == 0) && i < 82) {
+                note = mario[i];
+                duration(time_m[i]);
+                rests_m(i);
+                ++i;
+            }
+        }
+        if(((PINC>>PC1)&1) && (((PINC>>PC0)&1)==0) && (((PINC>>PC2)&1)==0)) {   // Up's Theme
+            i = 0;                                                              // Restart pointer
+            while((((PINC>>PC1)&1) == 0) && i < 60){
+                note = up[i];
+                duration(time_u[i]);
+                rests_u(i);
+                ++i;
+            }
+        }
+        if(((PINC>>PC2)&1) && (((PINC>>PC0)&1)==0) && (((PINC>>PC1)&1)==0)) {   // Harry Poter's Theme
+            i = 0;                                                              // Restart pointer
+            while((((PINC>>PC2)&1) == 0) && i < 56){
+                note = potter[i];
+                duration(time_p[i]);
+                rests_p(i);
+                ++i;
+            }
+        }
+    }
+}
