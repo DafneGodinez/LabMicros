@@ -1,0 +1,118 @@
+#define F_CPU 16000000
+
+//#include <stdio.h>
+//#include <stdlib.h>
+#include <avr/io.h>                                                             
+#include <util/delay.h>
+#include <avr/interrupt.h>
+
+int time_count;
+int flag = 0;
+
+int i = 0;
+int note = 0;
+int cycle = 0;
+int lapse = 0;
+
+/* 
+ * E E E C E G G
+ * //C G E A B bB A G E G A F G E C D B// 
+ * //G bG F D# E G# A C A C D G bG F D# E C C C G bG F D# E G# A C A C D bE D C//
+ */       
+int mario[]   = {152, 152, 152, 191, 152, 128, 255, 191, 255, 303, 227, 203, 215, 
+                 227, 255, 152, 128, 114, 143, 128, 152, 191, 170, 203, 191, 255, 
+                 303, 227, 203, 215, 227, 255, 152, 128, 114, 143, 128, 152, 191, 
+                 170, 203, 128, 135, 143, 161, 152, 241, 227, 191, 227, 191, 170, 
+                 128, 135, 143, 161, 152, 96, 96, 96, 128, 135, 143, 161, 152, 
+                 241, 227, 191, 227, 191, 170, 161, 170, 191, 128, 135, 143, 161, 
+                 152, 241, 227, 191, 227, 191, 170, 128, 135, 143, 161, 152, 96, 
+                 96, 96, 128, 135, 143, 161, 152, 241, 227, 191, 227, 191, 170, 
+                 161, 170, 191, 306}; 
+
+int time_N[]  = {8, 4, 4, 1, 1, 24, 16, 12, 8, 4, 12, 4, 1, 4, 4, 4, 4, 2, 4, 4, 
+                 4, 2, 1, 8, 12, 8, 4, 12, 4, 1, 4, 4, 4, 4, 2, 4, 4, 4, 2, 1, 
+                 16, 4, 1, 2, 4, 4, 1, 1, 4, 1, 1, 12, 2, 1, 2, 4, 4, 8, 8, 16, 
+                 4, 1, 2, 4, 4, 1, 1, 4, 1, 1, 12, 12, 12, 24, 4, 1, 2, 4, 4, 1, 
+                 1, 4, 1, 1, 12, 2, 1, 2, 4, 4, 8, 8, 16, 4, 1, 2, 4, 4, 1, 1, 4, 
+                 1, 1, 12, 12, 12, 8, 16};
+
+
+int time_M[]  = {4, 2, 2, 1, 1, 12, 8, 6, 4, 2, 6, 2, 1, 2, 2, 2, 2, 1, 2, 2, 2, 
+                 1, 1, 4, 6, 4, 2, 6, 2, 1, 2, 2, 2, 2, 1, 2, 2, 2, 1, 1, 8, 2, 
+                 1, 1, 2, 2, 1, 1, 2, 1, 1, 6, 1, 1, 1, 2, 2, 4, 4, 8, 2, 1, 1, 
+                 2, 2, 1, 1, 2, 1, 1, 6, 6, 6, 12, 2, 1, 1, 2, 2, 1, 1, 2, 1, 1, 
+                 6, 1, 1, 1, 2, 2, 4, 4, 8, 2, 1, 1, 2, 2, 1, 1, 2, 1, 1, 6, 6, 
+                 6, 4, 16};
+
+int time_F[]  = {2, 1, 1, 0, 0, 6, 4, 3, 2, 1, 3, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 
+                 0, 0, 2, 3, 2, 1, 3, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 4, 1, 
+                 0, 0, 1, 1, 0, 0, 1, 0, 0, 3, 0, 0, 0, 1, 1, 2, 2, 4, 1, 0, 0, 
+                 1, 1, 0, 0, 1, 0, 0, 3, 3, 3, 6, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 
+                 3, 0, 0, 0, 1, 1, 2, 2, 4, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 3, 3, 
+                 3, 2, 16};
+
+ISR (TIMER0_OVF_vect) {
+    TCNT0 = 240;                                                                // Set for 1 us timeout
+    TIFR0 = 1<<TOV0;
+    ++time_count;      
+    if (time_count == note && flag == 0) {
+        PORTB = 0x20;                                                           // Complement port bit to blink signal (1)
+        time_count = 0;       
+        flag = 1;
+    }
+    if (time_count == note && flag == 1) {
+        PORTB = 0x00;                                                           // Complement port bit to blink signal (0)
+        time_count = 0;         
+        flag = 0;
+    }
+}
+
+void duration(unsigned char milliseconds) {
+    while(milliseconds > 0) {
+        milliseconds--;
+        _delay_ms(1);
+    }
+}
+
+void rests(int i) {
+    PORTB = 0x00;                                                                
+    time_count = 0;         
+    flag = 0;
+    duration(lapse);   
+}
+
+int main(void) {
+    DDRB = 0xFF;                                                                // Output (B5)
+    TCCR0B = 0x01;
+    TCNT0 = 0x00;
+    TIFR0 = 1<<TOV0;
+    TIMSK0 = 1<<TOIE0;
+    sei();
+    while(1){
+        if(i < 108) {
+            if (cycle == 0) {                                                   // Normal velocity
+                lapse = 4;
+                note = mario[i];
+                duration(time_N[i]);
+                rests(i);
+                ++i;
+            } else if (cycle == 1) {                                            // Middle velocity
+                lapse = 3;
+                note = mario[i];
+                duration(time_M[i]);
+                rests(i);
+                ++i;
+            } else {                                                            // Fast velocity
+                lapse = 2;
+                note = mario[i];
+                duration(time_F[i]);
+                rests(i);
+                ++i;
+            }
+        } else {
+            i = 0;
+            if (cycle < 2) ++cycle;
+            else cycle = 0;
+        }
+    }
+}
