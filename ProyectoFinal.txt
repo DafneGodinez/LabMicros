@@ -1,0 +1,522 @@
+/* 
+ * File:   main.c
+ * Author: Moisés Mls
+ *
+ * Created on 9 de mayo de 2022, 12:19 PM
+ */
+
+#define F_CPU 16000000     
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <avr/io.h>                                 
+#include <util/delay.h>	
+#include <avr/interrupt.h>
+
+#define LCD_Dir  DDRD                                                           // Define LCD data port direction
+#define LCD_Port PORTD                                                          // Define LCD data port
+#define RS PD2                                                                  // Define Register Select pin
+#define EN PD3                                                                  // Define Enable signal pin
+
+unsigned char ghost[]= {
+  0x00,
+  0x00,
+  0x0E,
+  0x15,
+  0x1F,
+  0x1F,
+  0x15,
+  0x00
+};
+
+unsigned char pacman[]= {
+  0x00,
+  0x00,
+  0x0E,
+  0x1B,
+  0x1C,
+  0x0E,
+  0x00,
+  0x00
+};
+
+unsigned char heart[]= {
+  0x00,
+  0x0A,
+  0x1F,
+  0x1F,
+  0x1F,
+  0x0E,
+  0x04,
+  0x00
+};
+
+unsigned char smile[]= {
+  0x00,
+  0x00,
+  0x00,
+  0x0A,
+  0x00,
+  0x11,
+  0x0E,
+  0x00
+};
+
+unsigned char sad[]= {
+  0x00,
+  0x00,
+  0x00,
+  0x0A,
+  0x00,
+  0x0E,
+  0x11,
+  0x00
+};
+
+int x = 0;
+int note;
+int cycle = 0;
+int lapse = 30;
+
+int count_s;
+int flag_s = 0;
+
+int count;
+int flag = 1;
+int time = 0;
+int start = 0;
+
+int pot;
+int row = 0;
+int pos = 0;
+int points = 0;
+
+char score[3];
+int ghost_up[] = {4, 6, 12, 18, 25, 26, 31, 32, 37, 38};
+int ghost_down[] = {65, 73, 74, 79, 85, 87, 92, 93, 98, 99};
+
+int mario[]   = {15, 15, 15, 19, 15, 13, 26, 19, 26, 30, 23, 20, 22, 23, 26, 15, 
+                 13, 11, 14, 13, 15, 19, 17, 20, 19, 26, 30, 23, 20, 22, 23, 26, 
+                 15, 13, 11, 14, 13, 15, 19, 17, 20, 13, 14, 14, 16, 15, 24, 23, 
+                 19, 23, 19, 17, 13, 14, 14, 16, 15, 10, 10, 10, 13, 14, 14, 16, 
+                 15, 24, 23, 19, 23, 19, 17, 16, 17, 19, 13, 14, 14, 16, 15, 24, 
+                 23, 19, 23, 19, 17, 13, 14, 14, 16, 15, 10, 10, 10, 13, 14, 14, 
+                 16, 15, 24, 23, 19, 23, 19, 17, 16, 17, 19};
+
+int time_N[]  = {16, 8, 8, 2, 16, 52, 52, 24, 16, 16, 12, 8, 1, 2, 8, 2, 2, 1, 2, 
+                 2, 4, 2, 1, 12, 24, 16, 16, 12, 8, 1, 2, 8, 2, 2, 1, 2, 2, 4, 2, 
+                 1, 32, 0, 0, 0, 4, 2, 0, 0, 4, 1, 1, 12, 0, 0, 0, 4, 2, 4, 4, 52, 
+                 0, 0, 0, 4, 2, 0, 0, 4, 1, 1, 12, 24, 24, 104, 0, 0, 0, 4, 2, 0, 
+                 0, 4, 1, 1, 12, 0, 0, 0, 4, 2, 4, 4, 52, 0, 0, 0, 4, 2, 0, 0, 4, 
+                 1, 1, 12, 24, 24, 104};
+
+int time_M[]  = {8, 4, 4, 1, 8, 26, 26, 12, 8, 8, 6, 4, 0, 1, 1, 1, 1, 0, 1, 1, 2, 
+                 1, 0, 6, 12, 8, 8, 6, 4, 0, 1, 1, 1, 1, 0, 1, 1, 2, 1, 0, 16, 0, 
+                 0, 0, 2, 1, 0, 0, 2, 0, 0, 6, 0, 0, 0, 2, 1, 2, 2, 26, 0, 0, 0, 
+                 2, 1, 0, 0, 2, 0, 0, 6, 12, 12, 52, 0, 0, 0, 2, 1, 0, 0, 2, 0, 0, 
+                 6, 0, 0, 0, 2, 1, 2, 2, 26, 0, 0, 0, 2, 1, 0, 0, 2, 0, 0, 6, 12, 
+                 12, 52};
+
+int time_F[]  = {4, 2, 2, 0, 4, 13, 13, 6, 4, 4, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 1, 
+                 0, 0, 3, 6, 4, 4, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 8, 0, 
+                 0, 0, 1, 0, 0, 0, 1, 0, 0, 3, 0, 0, 0, 1, 0, 1, 1, 13, 0, 0, 0, 
+                 1, 0, 0, 0, 1, 0, 0, 3, 6, 6, 26, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 
+                 3, 0, 0, 0, 1, 0, 1, 1, 13, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 3, 6, 
+                 6, 26};
+
+void LCD_Command(unsigned char cmnd);
+void LCD_Char(unsigned char data);
+void CreateCustomCharacter(unsigned char *Pattern, const char Location);
+void LCD_String_xy(char row, char pos/char *str/);
+void LCD_String(char *str);
+void LCD_Clear();
+void Game_Init();
+
+ISR(TIMER0_OVF_vect) {
+    TCNT0 = 96;                                                                 // Set for 10 us timeout
+    TIFR0 = 1<<TOV0;
+    if (start == 1) {
+        if (time < 188) { 
+            ++count_s;
+            /* ----------------------TIMER - SOUND PART---------------------- */
+            if (count_s == note && flag_s == 0 && time < 188) {
+                PORTB = 0x20;                                                   // Complement port bit to blink signal (1)
+                count_s = 0;         
+                flag_s = 1;
+            } 
+            if (count_s == note && flag_s == 1 && time < 188) {
+                PORTB = 0x00;                                                   // Complement port bit to blink signal (0)
+                count_s = 0;         
+                flag_s = 0;
+            }
+            ++count;
+            /* -------------------TIMER - EVERYTHING ELSE-------------------- */
+            // Normal = lower than 30s
+            if (count == 30000 && flag == 0 && time < 30) { 
+                if (pos < 39) ++pos;
+                else pos = 0;
+                LCD_String_xy(row, pos);
+                LCD_Char(1);
+            
+                ++time;
+                for (int i = 0; i < 10; i++) {
+                    if (pos == ghost_up[i] && row == 0) ++points;
+                    if ((pos + 64) == ghost_down[i] && row == 1) ++points;
+                }
+                LCD_Command(0x18);
+            
+                cycle = 0;
+                count = 0;       
+                flag = 1;
+            }
+            if (count == 30000 && flag == 1 && time < 30) {  
+                int i = 0;
+                int coll = 0;
+                while (i < 10 && coll == 0) {
+                    if (pos == ghost_up[i] && row == 0) {
+                        LCD_String_xy(row, pos);
+                        LCD_Char(2);
+                        coll = 1;
+                    }
+                
+                    if ((pos + 64) == ghost_down[i] && row == 1) {
+                        LCD_String_xy(row, pos);
+                        LCD_Char(2);
+                        coll = 1;
+                    }
+                    ++i;
+                }
+                
+                if (coll == 0) {
+                    LCD_String_xy(row, pos);
+                    LCD_String(" ");
+                }
+            
+                cycle = 0;
+                count = 0;         
+                flag = 0;
+            }
+            // Mid = grader than 30s and lower than 60s
+            if (count == 15000 && flag == 0 && (time >= 30 && time < 90)) {
+                if (pos < 39) ++pos;
+                else pos = 0;
+                LCD_String_xy(row, pos);
+                LCD_Char(1);
+            
+                ++time;
+                for (int i = 0; i < 10; i++) {
+                    if (pos == ghost_up[i] && row == 0) points += 2;
+                    if ((pos + 64) == ghost_down[i] && row == 1) points += 2;
+                }
+                LCD_Command(0x18);
+            
+                cycle = 1;
+                count = 0;       
+                flag = 1;
+            }
+            if (count == 15000 && flag == 1 && (time >= 30 && time < 90)) {
+                int i = 0;
+                int coll = 0;
+                while (i < 10 && coll == 0) {
+                    if (pos == ghost_up[i] && row == 0) {
+                        LCD_String_xy(row, pos);
+                        LCD_Char(2);
+                        coll = 1;
+                    }
+                
+                    if ((pos + 64) == ghost_down[i] && row == 1) {
+                        LCD_String_xy(row, pos);
+                        LCD_Char(2);
+                        coll = 1;
+                    }
+                    ++i;
+                }
+            
+                if (coll == 0) {
+                    LCD_String_xy(row, pos);
+                    LCD_String(" ");
+                }
+            
+                cycle = 1;
+                count = 0;         
+                flag = 0;
+            }
+            // Fast = grader than 60s (90s limit))
+            if (count == 7500 && flag == 0 && (time >= 90 && time < 188)) {
+                if (pos < 39) ++pos;
+                else pos = 0;
+                LCD_String_xy(row, pos);
+                LCD_Char(1);
+            
+                ++time;
+                for (int i = 0; i < 10; i++) {
+                    if (pos == ghost_up[i] && row == 0) points += 3;
+                    if ((pos + 64) == ghost_down[i] && row == 1) points += 3;
+                }
+                LCD_Command(0x18);
+                
+                cycle = 2;
+                count = 0;       
+                flag = 1;
+            }
+            if (count == 7500 && flag == 1 && (time >= 90 && time < 188)) {
+                int i = 0;
+                int coll = 0;
+                while (i < 10 && coll == 0) {
+                    if (pos == ghost_up[i] && row == 0) {
+                        LCD_String_xy(row, pos);
+                        LCD_Char(2);
+                        coll = 1;
+                    }
+                
+                    if ((pos + 64) == ghost_down[i] && row == 1) {
+                        LCD_String_xy(row, pos);
+                        LCD_Char(2);
+                        coll = 1;
+                    }
+                    ++i;
+                }
+            
+                if (coll == 0) {
+                    LCD_String_xy(row, pos);
+                    LCD_String(" ");
+                }
+            
+                cycle = 2;
+                count = 0;         
+                flag = 0;
+            }
+        } else {                                                                // 90s finished -> restart
+            start = 0;
+            
+            _delay_ms(500);
+            LCD_Clear();
+            itoa(180 - points, score, 10);                                      // Integer to string conversion
+            LCD_String("Score:");
+            LCD_String_xy(0, 7);
+            LCD_String(score);
+            LCD_String_xy(0, 11);
+            if (180 - points == 180) LCD_Char(3);
+            else if (180 - points > 90 && 180 - points < 180) LCD_Char(4);
+            else LCD_Char(5);
+            _delay_ms(3000);
+            LCD_Clear();
+
+            x = 0;
+            cycle = 0;
+            
+            flag_s = 0;
+            count_s = 0;
+            
+            time = 0;
+            flag = 1;
+            count = 0;
+            points = 0;
+            pos = 0;
+            row = 0;
+            
+            Game_Init();
+            _delay_ms(250);
+            
+            start = 1;
+        }
+    }
+}
+
+void ADC_Init() {
+	DDRC = 0x0;                                                                 // Make ADC port as input ATmega328p pag 206
+	ADCSRA = 0x87;                                                              // Enable ADC, fr/128  ATmega328p pag 218
+	ADMUX = 0x40;                                                               // Vref: Avcc, ADC channel: 0 ATmega328p pag 217
+}
+
+int ADC_Read(char channel) {
+	int Ain, AinLow;
+
+	ADMUX = ADMUX|(channel & 0x0f);                                             // Set input channel to read
+
+	ADCSRA |= (1<<ADSC);                                                        // Start conversion
+	while((ADCSRA&(1<<ADIF)) == 0);                                             // Monitor end of conversion interrupt
+
+	_delay_us(10);
+	AinLow = (int)ADCL;                                                         // Read lower byte ATmega328p pag 219
+	Ain = (int)ADCH*256;                                                        // Read higher 2 bits and multiply with weight
+	Ain = Ain + AinLow;
+	return(Ain);                                                                // Return digital value
+}
+
+void LCD_Command(unsigned char cmnd) {
+	LCD_Port = (LCD_Port & 0x0F) | (cmnd & 0xF0);                               // Sending upper nibble
+	LCD_Port &= ~ (1<<RS);                                                      // RS=0, command reg.
+	LCD_Port |= (1<<EN);                                                        // Enable pulse
+	_delay_us(10);
+	LCD_Port &= ~ (1<<EN);
+
+	_delay_us(200);
+
+	LCD_Port = (LCD_Port & 0x0F) | (cmnd << 4);                                 // Sending lower nibble
+	LCD_Port |= (1<<EN);
+	_delay_us(10);
+	LCD_Port &= ~ (1<<EN);
+	_delay_ms(20);
+}
+
+void LCD_Char(unsigned char data) {
+	LCD_Port = (LCD_Port & 0x0F) | (data & 0xF0);                               // Sending upper nibble
+	LCD_Port |= (1<<RS);                                                        // RS=1, data reg.
+	LCD_Port |= (1<<EN);
+	_delay_us(10);
+	LCD_Port &= ~ (1<<EN);
+
+	_delay_us(200);
+
+	LCD_Port = (LCD_Port & 0x0F) | (data << 4);                                 // Sending lower nibble
+	LCD_Port |= (1<<EN);
+	_delay_us(10);
+	LCD_Port &= ~ (1<<EN);
+	_delay_ms(20);
+}
+
+void CreateCustomCharacter(unsigned char *Pattern, const char Location) {
+    int i = 0;
+    LCD_Command(0x40+(Location*8));                                             // Send the Address of CGRAM
+    for(i = 0; i < 8; i++)
+        LCD_Char(Pattern[i]);                                                   // Pass the bytes of pattern on LCD
+}
+
+void LCD_Init(void) {                                                           // LCD Initialize function 
+	LCD_Dir = 0xFF;                                                             // Make LCD port direction as o/p
+	_delay_ms(20);                                                              // LCD Power ON delay always > 15ms 
+	CreateCustomCharacter(pacman, 1);
+    CreateCustomCharacter(ghost, 2);
+    CreateCustomCharacter(heart, 3);
+    CreateCustomCharacter(smile, 4);
+    CreateCustomCharacter(sad, 5);
+	LCD_Command(0x02);                                                          // Send for 4 bit initialization of LCD
+	LCD_Command(0x28);                                                          // 2 line, 5*7 matrix in 4-bit mode
+	LCD_Command(0x0C);                                                          // Display on cursor off
+	LCD_Command(0x06);                                                          // Increment cursor (shift cursor to right)
+	LCD_Command(0x01);                                                          // Clear display screen
+	_delay_ms(2);
+}
+
+void LCD_String(char *str) {                                                    // Send string to LCD function
+	int i;
+	for(i = 0; str[i] != 0; i++)                                                // Send each char of string till the NULL
+		LCD_Char(str[i]);
+}
+
+void LCD_String_xy(char row, char pos/char *str/) {                           // Send string to LCD with xy position
+	if (row == 0 && pos<40)
+        LCD_Command((pos & 0x3f)|0x80);                                         // Command of first row and required position < 16
+	else if (row == 1 && pos<104)
+        LCD_Command((pos & 0x3f)|0xC0);                                         // Command of second row and required position < 16
+	//LCD_String(str);                                                          // Call LCD string function
+}
+
+void LCD_Clear() {
+	LCD_Command(0x01);                                                          // Clear display
+	_delay_ms(2);
+	LCD_Command(0x80);                                                          // Cursor at home position
+}
+
+void duration(unsigned char milliseconds) {
+    while(milliseconds > 0) {
+        milliseconds--;
+        _delay_ms(1);
+    }
+}
+
+void rests(int i) {
+    PORTB = 0x00;                                                                
+    count_s = 0;         
+    flag_s = 1;
+    duration(lapse);   
+}
+
+void Game_Init() {
+    LCD_String("   Welcome to   ");                                             // Write string on 1st line of LCD
+	LCD_Command(0xC0);                                                          // Go to 2nd line
+	LCD_String("....PACMANIO....");                                             // Write string on 2nd line
+    _delay_ms(1500);
+    LCD_Clear();
+    
+    // ghosts
+    for(unsigned char i = 0; i < 10; i++) {
+        // top row
+        LCD_String_xy(0, ghost_up[i]);
+        LCD_Char(2);
+        // bottom row
+        LCD_String_xy(1, ghost_down[i]);
+        LCD_Char(2);
+    }
+        
+    // init pacman
+    LCD_String_xy(0, 0);
+    LCD_Char(1);
+    _delay_ms(250);
+    LCD_String_xy(0, 0);
+    LCD_String(" ");
+    LCD_String_xy(0, 1);
+    LCD_Char(1);
+    ++pos;
+    
+    // cursor off
+    LCD_Command(0x0C);
+}
+
+int main() {
+    DDRB = 0xFF;                                                                // Output (B5)
+    TCCR0B = 0x01;
+    TCNT0 = 0x00;
+    TIFR0 = 1<<TOV0;
+    TIMSK0 = 1<<TOIE0;
+    sei();
+    
+	ADC_Init();
+	LCD_Init();                                                                 
+    Game_Init();
+    _delay_ms(250);
+    start = 1;                                                                  // Timer starts counting
+    
+	while(1) {
+        /* -------------------------------SONG------------------------------- */
+        if(x < 107) {
+            if (cycle == 0) {                                                   // Normal velocity
+                lapse = 30;
+                note = mario[x];
+                duration(time_N[x]);
+                rests(x);
+                ++x;
+            } else if (cycle == 1) {                                            // Middle velocity
+                lapse = 20;
+                note = mario[x];
+                duration(time_M[x]);
+                rests(x);
+                ++x;
+            } else {                                                            // Fast velocity
+                lapse = 10;
+                note = mario[x];
+                duration(time_F[x]);
+                rests(x);
+                ++x;
+            }
+        } else x = 0;
+        /* -------------------------------ADC-------------------------------- */
+        start = 0;
+        pot = ADC_Read(0);
+        if (pot > 511) { 
+            if (row != 1) {
+                row = 1;
+                LCD_String_xy(0, pos);
+                LCD_String(" ");
+            }
+        } else {
+            if (row != 0) {
+                row = 0;
+                LCD_String_xy(1, pos);
+                LCD_String(" ");
+            }
+        }
+        start = 1;
+	}
+}
